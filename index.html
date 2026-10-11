@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="キッチンカー集計">
+<meta name="theme-color" content="#1d5fd1">
+<title>CAFE BLUE BRIDGE キッチンカー集計</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f3f6fc;color:#1b2433}
+header{background:#1d5fd1;color:#fff;padding:14px 16px;line-height:1.3}
+header .brand{display:block;font-size:13px;font-weight:700;letter-spacing:.1em;opacity:.9}
+header .ttl{display:block;font-size:22px;font-weight:700}
+.container{max-width:760px;margin:auto;padding:16px}
+.panel{background:#fff;border-radius:16px;padding:18px;box-shadow:0 2px 10px #00000012;margin-bottom:16px}
+.panel h3{margin:0 0 12px}
+label{display:block;font-weight:700;margin-bottom:8px}
+input,button{font:inherit}
+input[type=date],input[type=text],input[type=number]{width:100%;padding:13px;border:1px solid #cdd9ee;border-radius:10px;background:#fff}
+.primary{width:100%;border:0;border-radius:12px;padding:16px;background:#1d5fd1;color:#fff;font-weight:700;font-size:18px}
+.secondary{border:0;border-radius:10px;padding:11px 14px;background:#e3ebfa;color:#17448f;font-weight:700}
+.staff-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+/* カウント画面：3列×3行（9個）が1画面に収まるレイアウト */
+body.counting{overflow:hidden}
+body.counting header{display:none}
+body.counting .container{padding:8px 8px calc(8px + env(safe-area-inset-bottom,0px))}
+#countScreen:not(.hidden){display:flex;flex-direction:column;height:calc(100vh - 16px);height:calc(100dvh - 16px - env(safe-area-inset-bottom,0px))}
+#countScreen .topline{margin-bottom:6px;flex:none}
+#countScreen .secondary{padding:8px 10px;font-size:14px}
+#countScreen .sumbar{position:static;flex:none;align-items:center;justify-content:space-between;gap:8px;padding:6px 12px;margin-bottom:6px;border-radius:12px}
+#countScreen .sumbar .val{font-size:20px}
+#countScreen .sumbar .who{font-size:11px;line-height:1.4;text-align:left;opacity:.9;flex:1;min-width:0}
+#countScreen .sumbar .who>div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.menu-grid{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:140px;gap:10px;padding:6px}
+.menu-card{position:relative;background:#e3ebfa;border:4px solid #fff;border-radius:14px;overflow:hidden;box-shadow:0 3px 12px #1d3f8c55;cursor:pointer;transition:.12s;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+.menu-card:active{transform:scale(.96)}
+.menu-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.menu-no-photo{position:absolute;inset:0;background:linear-gradient(135deg,#a9c3f0,#5f8bd8)}
+.menu-body{position:absolute;left:0;right:0;bottom:0;padding:22px 4px 6px;background:linear-gradient(transparent,#0b1f4ccc);color:#fff}
+.menu-name{font-size:13px;font-weight:800;line-height:1.25;overflow-wrap:anywhere;text-wrap:balance;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-shadow:0 1px 3px #0008}
+.menu-name.fit{display:block;-webkit-line-clamp:unset;overflow:visible}
+.price{font-size:12px;margin-top:2px;opacity:.92}
+.count{position:absolute;top:6px;left:6px;min-width:38px;height:38px;padding:0 9px;border-radius:19px;background:#fffffff0;color:#1b2433;font-size:22px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px #0003;font-variant-numeric:tabular-nums}
+.correct{position:absolute;top:6px;right:6px;width:40px;height:40px;border-radius:50%;border:0;background:#fff0f0;color:#c62828;font-size:14px;font-weight:800;padding:0;box-shadow:0 1px 4px #0003}
+@media (min-width:600px){.menu-grid{gap:12px}.menu-name{font-size:17px}.price{font-size:14px}.count{font-size:28px;height:46px;min-width:46px;border-radius:23px}.correct{width:48px;height:48px;font-size:16px}}
+.staff-btn{padding:16px;border:2px solid #cdd9ee;border-radius:12px;background:#fff;font-weight:700}
+.staff-btn.selected{border-color:#1d5fd1;background:#eaf1fd;color:#1d5fd1}
+.hidden{display:none!important}
+/* ＋1：緑の光 + 数字がポンと大きくなり、「+1」が上に浮かぶ */
+.flash-add{animation:flashAdd .35s ease}
+@keyframes flashAdd{0%{box-shadow:0 0 0 0 #1d5fd188}45%{box-shadow:0 0 0 5px #1d5fd133}100%{box-shadow:0 0 0 0 #1d5fd100}}
+.count.pop{animation:countPop .32s ease}
+@keyframes countPop{0%{transform:scale(1);color:#1d5fd1}40%{transform:scale(1.4);color:#1d5fd1}100%{transform:scale(1);color:#1b2433}}
+/* −1：赤い光 + カードが左右に揺れ、数字がしぼみ、「−1」が下に沈む */
+.flash-minus{animation:flashMinus .42s ease}
+@keyframes flashMinus{0%{transform:translateX(0);box-shadow:0 0 0 0 #c6282800}15%{transform:translateX(-5px);box-shadow:0 0 0 5px #c6282866}35%{transform:translateX(5px)}55%{transform:translateX(-4px);box-shadow:0 0 0 5px #c6282844}75%{transform:translateX(2px)}100%{transform:translateX(0);box-shadow:0 0 0 0 #c6282800}}
+.count.drop{animation:countDrop .38s ease}
+@keyframes countDrop{0%{transform:scale(1);color:#c62828}40%{transform:scale(.65);opacity:.5;color:#c62828}100%{transform:scale(1);opacity:1;color:#1b2433}}
+.float{position:absolute;left:50%;top:38%;font-size:28px;font-weight:900;pointer-events:none;text-shadow:0 0 3px #fff,0 0 6px #fff,0 0 10px #fff}
+.float.plus{color:#1d5fd1;animation:floatUp .6s ease-out forwards}
+.float.minus{color:#c62828;animation:floatDown .6s ease-out forwards}
+@keyframes floatUp{0%{opacity:0;transform:translate(-50%,10px)}20%{opacity:1}100%{opacity:0;transform:translate(-50%,-50px)}}
+@keyframes floatDown{0%{opacity:0;transform:translate(-50%,-10px)}20%{opacity:1}100%{opacity:0;transform:translate(-50%,50px)}}
+@media (prefers-reduced-motion:reduce){.flash-minus{animation:none}.float{display:none}}
+.topline{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.small{font-size:13px;color:#666}
+.manage-list{display:grid;gap:10px}
+.manage-item{display:grid;grid-template-columns:70px 1fr auto;gap:10px;align-items:center;border:1px solid #eee;border-radius:12px;padding:10px}
+.thumb{width:70px;height:70px;border-radius:10px;object-fit:cover;background:#eee}
+.no-thumb{width:70px;height:70px;border-radius:10px;background:#eee;display:flex;align-items:center;justify-content:center;color:#999;font-size:11px}
+.actions{display:flex;flex-direction:column;gap:6px}
+.mini{padding:9px 12px;min-width:48px}
+.mini:disabled{opacity:.35}
+.fields{display:grid;gap:8px;min-width:0}
+.fields input{padding:10px}
+.pricebox{display:flex;align-items:center;gap:6px;font-weight:700}
+.thumb-cell{display:grid;gap:4px;justify-items:center}
+.thumb-btn{border:0;background:none;padding:0;cursor:pointer}
+.linkbtn{border:0;background:none;color:#c62828;font-size:11px;padding:2px}
+.saved{border-color:#1d5fd1!important;box-shadow:0 0 0 3px #1d5fd133}
+.addrow{display:grid;grid-template-columns:1fr 90px auto;gap:8px;align-items:center}
+.addbtn{width:auto;padding:12px 16px;font-size:16px}
+.delete{background:#fff0f0;color:#c62828}
+.modal{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
+.modal-box{background:#fff;border-radius:16px;padding:18px;width:min(560px,100%);max-height:90vh;overflow:auto}
+.modal-box h2{margin-top:0}
+.form-row{display:grid;gap:12px;margin-bottom:12px}
+.preview{width:100%;max-height:220px;object-fit:contain;background:#f1f1f1;border-radius:10px;margin-top:8px}
+.note{font-size:12px;color:#666;line-height:1.6}
+
+/* 集計バー（集計画面の上部に固定） */
+.sumbar{position:sticky;top:8px;z-index:5;display:flex;justify-content:space-around;gap:12px;background:#123f8c;color:#fff;border-radius:14px;padding:12px 16px;margin-bottom:12px;box-shadow:0 3px 10px #00000030}
+.sumbar>div{text-align:center}
+.sumbar .lbl{font-size:12px;opacity:.85}
+.sumbar .val{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums}
+
+/* 集計画面 */
+.hero{display:flex;gap:12px}
+.hero>div{flex:1;background:#eaf1fd;border-radius:12px;padding:14px;text-align:center}
+.hero .val{font-size:30px;font-weight:800;color:#1d5fd1;font-variant-numeric:tabular-nums}
+.hero .lbl{font-size:13px;color:#555}
+.tbl{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.tbl th{font-size:12px;color:#666;text-align:right;font-weight:700;padding:6px 4px;border-bottom:1px solid #eee}
+.tbl td{padding:10px 4px;border-bottom:1px solid #f0f0f0;text-align:right}
+.tbl th:first-child,.tbl td:first-child{text-align:left}
+.tbl tfoot td{font-weight:800;border-bottom:0;border-top:2px solid #cdd9ee}
+.day-row{display:grid;grid-template-columns:1fr auto auto;gap:14px;width:100%;text-align:left;background:#fff;border:1px solid #eee;border-radius:10px;padding:12px;margin-bottom:8px;align-items:center;font-variant-numeric:tabular-nums}
+.day-row.selected{border-color:#1d5fd1;background:#eaf1fd}
+.day-row .amt{font-weight:800}
+.empty{color:#888;font-size:14px;padding:4px 0}
+.wide{width:100%;margin-bottom:8px}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#12306b;color:#fff;padding:12px 18px;border-radius:12px;font-size:14px;line-height:1.5;z-index:30;max-width:90%;text-align:center;box-shadow:0 4px 14px #0004}
+</style>
+</head>
+<body>
+<header><span class="brand">CAFE BLUE BRIDGE</span><span class="ttl">キッチンカー集計</span></header>
+
+<div class="container">
+
+<section id="startScreen">
+  <div class="panel">
+    <label for="date">日程</label>
+    <input id="date" type="date">
+  </div>
+
+  <div class="panel">
+    <label for="place">出店場所・イベント名</label>
+    <input id="place" type="text" maxlength="40" list="placeList" autocomplete="off" placeholder="例：○○公園マルシェ">
+    <datalist id="placeList"></datalist>
+  </div>
+
+  <div class="panel">
+    <label>スタッフ名</label>
+    <input id="staffName" type="text" placeholder="自分の名前を入力してください">
+  </div>
+
+  <div class="panel">
+    <button class="primary" onclick="startCounting()">集計を始める</button>
+  </div>
+
+  <div class="panel">
+    <button class="secondary" style="width:100%" onclick="openSummary('start')">売上・日別集計を見る</button>
+  </div>
+
+  <div class="panel">
+    <button class="secondary" style="width:100%" onclick="openMenuManager()">メニューを編集する</button>
+  </div>
+</section>
+
+<section id="countScreen" class="hidden">
+  <div class="topline">
+    <button class="secondary" onclick="backToStart()">← 戻る</button>
+    <div style="display:flex;gap:6px">
+      <button class="secondary" onclick="openMenuManager()">メニュー編集</button>
+      <button class="secondary" onclick="openSummary('count')">集計</button>
+    </div>
+  </div>
+  <div class="sumbar">
+    <div class="who"><div><span id="showDate"></span> <span id="showStaff"></span></div><div id="showPlace"></div></div>
+    <div><div class="lbl">販売数</div><div class="val" id="barQty">0個</div></div>
+    <div><div class="lbl">売上</div><div class="val" id="barAmount">¥0</div></div>
+  </div>
+  <div id="menuGrid" class="menu-grid"></div>
+</section>
+
+<section id="summaryScreen" class="hidden">
+  <div class="topline">
+    <button class="secondary" onclick="closeSummary()">← 戻る</button>
+    <div class="small">この端末に記録された販売の集計</div>
+  </div>
+
+  <div class="panel">
+    <label for="sumDate">日付</label>
+    <input id="sumDate" type="date" onchange="renderSummary()">
+    <div id="sumPlace" style="margin-top:10px;font-weight:700;color:#17448f"></div>
+  </div>
+
+  <div class="panel">
+    <div id="sumHero" class="hero"></div>
+  </div>
+
+  <div class="panel">
+    <h3>メニュー別</h3>
+    <div id="sumMenu"></div>
+  </div>
+
+  <div class="panel">
+    <h3>スタッフ別</h3>
+    <div id="sumStaff"></div>
+  </div>
+
+  <div class="panel">
+    <h3>日別一覧</h3>
+    <div id="sumDays"></div>
+  </div>
+
+  <div class="panel">
+    <h3>共有・データ連携</h3>
+    <button class="secondary wide" onclick="shareSummaryText()">選んだ日の集計をテキストで共有</button>
+    <button class="secondary wide" onclick="exportSales()">販売データを書き出す</button>
+    <button class="secondary wide" onclick="document.getElementById('importFile').click()">他の端末のデータを取り込む</button>
+    <input id="importFile" type="file" accept=".json,application/json" class="hidden" onchange="importSales(event)">
+    <div class="note">テキスト共有は、LINEやメールにそのまま送れる売上のまとめです。書き出したデータを別の端末で取り込むと、販売記録が合算されます（同じ記録は重複しません）。</div>
+  </div>
+</section>
+
+</div>
+
+<div id="menuModal" class="modal hidden">
+  <div class="modal-box">
+    <div class="topline">
+      <h2>メニュー編集</h2>
+      <button class="secondary" onclick="closeMenuManager()">閉じる</button>
+    </div>
+    <div class="note" style="margin-bottom:12px">名前と価格は、そのまま書き換えると自動で保存されます。写真は左の枠をタップして変更できます。価格を変えても、過去の売上は変わりません。</div>
+    <div id="manageList" class="manage-list"></div>
+    <div class="panel" style="padding:14px;background:#f5f8fe;margin:12px 0 0">
+      <h3>メニューを追加</h3>
+      <div class="addrow">
+        <input id="newName" type="text" placeholder="メニュー名">
+        <input id="newPrice" type="number" inputmode="numeric" min="0" placeholder="価格">
+        <button class="primary addbtn" onclick="addMenu()">追加</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<input id="photoPicker" type="file" accept="image/*" class="hidden">
+
+<script>
+// v3 と同じキーを使うので、メニューや写真はそのまま引き継がれます
+const STORAGE_KEY = 'kitchencar-counter-simple-v3';
+// 販売記録は別キーに分けて保存（写真で容量が埋まっても販売記録に影響しないように）
+const SALES_KEY = 'kitchencar-sales-v1';
+
+let state = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null') || {
+  menus: [
+    {id: crypto.randomUUID(), name:'カレー', price:800, photo:''},
+    {id: crypto.randomUUID(), name:'スペシャルカレー', price:1100, photo:''},
+    {id: crypto.randomUUID(), name:'からあげ', price:500, photo:''},
+    {id: crypto.randomUUID(), name:'ドリンク', price:300, photo:''}
+  ],
+  counts:{},
+  lastStaff:''
+};
+
+// 販売記録：1タップ = 1件。販売時の名前・単価も一緒に記録する
+// {id, ts, date, staff, menuId, name, price}
+let sales = loadSales();
+
+let photoTargetId = null;
+let session = {date:'', staff:'', place:''};
+let summaryFrom = 'start';
+
+const dateEl = document.getElementById('date');
+dateEl.value = todayStr();
+
+function todayStr(){
+  // toISOString() はUTC基準で朝9時前に前日になるため、端末のローカル日付で作る
+  const d = new Date();
+  const p = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
+
+function yen(n){ return '¥' + Number(n).toLocaleString(); }
+
+function loadSales(){
+  try{ return JSON.parse(localStorage.getItem(SALES_KEY) || '[]') || []; }
+  catch(e){ return []; }
+}
+
+function saveSales(){
+  try{ localStorage.setItem(SALES_KEY, JSON.stringify(sales)); return true; }
+  catch(e){ alert('販売記録を保存できませんでした。端末の空き容量を確認してください。'); return false; }
+}
+
+function save(){
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  catch(e){ alert('保存できませんでした。写真のサイズが大きすぎる可能性があります。'); }
+}
+
+// v3 の個数データ（日付::スタッフ::メニューID → 個数）を販売記録に変換（初回のみ）
+(function migrateCounts(){
+  const entries = Object.entries(state.counts || {});
+  if(!entries.length) return;
+  entries.forEach(([k, n])=>{
+    const parts = k.split('::');
+    if(parts.length < 3) return;
+    const date = parts[0];
+    const menuId = parts[parts.length-1];
+    const staff = parts.slice(1, -1).join('::');
+    const menu = state.menus.find(m=>m.id===menuId);
+    if(!menu) return;
+    for(let i=0;i<n;i++){
+      sales.push({id:crypto.randomUUID(), ts:0, date, staff, menuId, name:menu.name, price:menu.price});
+    }
+  });
+  if(saveSales()){ state.counts = {}; save(); }
+})();
+
+function startCounting(){
+  const staff = document.getElementById('staffName').value.trim();
+  if(!staff){ alert('スタッフ名を入力してください'); return; }
+  if(!dateEl.value){ alert('日程を選択してください'); return; }
+  const place = document.getElementById('place').value.trim();   // 無記入でもOK
+
+  session = {date: dateEl.value, staff, place};
+  state.lastStaff = staff;
+  save();
+
+  document.getElementById('showDate').textContent = session.date;
+  document.getElementById('showStaff').textContent = session.staff;
+  const pl = document.getElementById('showPlace');
+  pl.textContent = session.place;
+  pl.style.display = session.place ? '' : 'none';
+  document.getElementById('startScreen').classList.add('hidden');
+  setCounting(true);
+  document.getElementById('countScreen').classList.remove('hidden');
+  renderMenus();
+}
+
+// カウント画面の間だけ、ヘッダーを隠して画面いっぱいを使う
+function setCounting(on){ document.body.classList.toggle('counting', on); }
+
+// 3列×3行がちょうど画面に収まるように、1行の高さを計算する（10個目以降は縦スクロール）
+function fitGrid(){
+  const g = document.getElementById('menuGrid');
+  if(!g.clientHeight) return;
+  const cs = getComputedStyle(g);
+  const inner = g.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  const gap = parseFloat(cs.rowGap) || 8;
+  const h = Math.floor((inner - gap*2) / 3);
+  g.style.gridAutoRows = Math.max(h, 96) + 'px';
+}
+// メニュー名が長いときは文字を自動で小さくする
+// まず1行に収まる大きさ（基準の8割まで）を探し、無理なら2行に収まる大きさまで下げる（最小は基準の約7割）
+function fitNames(){
+  const grid = document.getElementById('menuGrid');
+  if(!grid.clientWidth) return;
+  grid.querySelectorAll('.menu-name').forEach(el=>{
+    el.style.fontSize = '';
+    const base = parseFloat(getComputedStyle(el).fontSize);
+    const lh = parseFloat(getComputedStyle(el).lineHeight) / base || 1.25;
+    el.classList.add('fit');          // 測定のため一時的に行数制限を外す
+    el.style.whiteSpace = 'nowrap';
+    let found = false;
+    for(let size = base; size >= base*0.8; size -= 0.5){
+      el.style.fontSize = size + 'px';
+      if(el.scrollWidth <= el.clientWidth){ found = true; break; }
+    }
+    el.style.whiteSpace = '';
+    if(!found){
+      for(let size = base; size >= base*0.7; size -= 0.5){
+        el.style.fontSize = size + 'px';
+        if(el.offsetHeight <= size*lh*2 + 1) break;
+      }
+    }
+    el.classList.remove('fit');
+  });
+}
+function layoutCount(){ fitGrid(); fitNames(); }
+window.addEventListener('resize', layoutCount);
+window.addEventListener('orientationchange', ()=>setTimeout(layoutCount, 200));
+
+// 過去に入力した出店場所・イベント名を、入力候補として出す（新しい順・最大20件）
+function refreshPlaceList(){
+  const seen = new Set(), out = [];
+  for(let i = sales.length - 1; i >= 0 && out.length < 20; i--){
+    const p = sales[i].place;
+    if(p && !seen.has(p)){ seen.add(p); out.push(p); }
+  }
+  document.getElementById('placeList').innerHTML = out.map(p=>`<option value="${escapeHtml(p)}">`).join('');
+}
+
+function backToStart(){
+  setCounting(false);
+  refreshPlaceList();
+  document.getElementById('countScreen').classList.add('hidden');
+  document.getElementById('startScreen').classList.remove('hidden');
+}
+
+/* ---------- カウント画面 ---------- */
+
+function menuCount(menuId){
+  let n = 0;
+  for(const s of sales){
+    if(s.date===session.date && s.staff===session.staff && s.menuId===menuId) n++;
+  }
+  return n;
+}
+
+function sessionTotals(){
+  let qty = 0, amount = 0;
+  for(const s of sales){
+    if(s.date===session.date && s.staff===session.staff){ qty++; amount += Number(s.price); }
+  }
+  return {qty, amount};
+}
+
+function refreshCounts(){
+  document.querySelectorAll('#menuGrid .menu-card').forEach(c=>{
+    c.querySelector('.count').textContent = menuCount(c.dataset.id);
+  });
+  const t = sessionTotals();
+  document.getElementById('barQty').textContent = t.qty + '個';
+  document.getElementById('barAmount').textContent = yen(t.amount);
+}
+
+function renderMenus(){
+  const grid = document.getElementById('menuGrid');
+  grid.innerHTML = '';
+
+  state.menus.forEach(menu=>{
+    const card = document.createElement('div');
+    card.className = 'menu-card';
+    card.dataset.id = menu.id;
+
+    const visual = menu.photo
+      ? `<img class="menu-photo" src="${menu.photo}" alt="">`
+      : `<div class="menu-no-photo"></div>`;
+
+    card.innerHTML = `
+      ${visual}
+      <div class="count">0</div>
+      <button class="correct" onclick="correctCount(event,'${menu.id}')" aria-label="1つ戻す">−1</button>
+      <div class="menu-body">
+        <div class="menu-name">${escapeHtml(menu.name)}</div>
+        <div class="price">${yen(menu.price)}</div>
+      </div>
+    `;
+
+    card.addEventListener('click', e=>{
+      if(e.target.closest('.correct')) return;
+      addCount(menu, card);
+    });
+
+    grid.appendChild(card);
+  });
+  refreshCounts();
+  layoutCount();
+}
+
+function addCount(menu, card){
+  sales.push({
+    id: crypto.randomUUID(),
+    ts: Date.now(),
+    date: session.date,
+    staff: session.staff,
+    menuId: menu.id,
+    name: menu.name,
+    price: menu.price,
+    place: session.place || ''
+  });
+  if(!saveSales()){ sales.pop(); return; }
+  refreshCounts();
+  playEffect(card, 'add');
+}
+
+// ＋1 と −1 で違う演出（見た目 + 対応端末では振動）を出す
+function playEffect(card, type){
+  const add = type === 'add';
+  const cnt = card.querySelector('.count');
+  card.classList.remove('flash-add','flash-minus');
+  cnt.classList.remove('pop','drop');
+  void card.offsetWidth;
+  card.classList.add(add ? 'flash-add' : 'flash-minus');
+  cnt.classList.add(add ? 'pop' : 'drop');
+
+  const f = document.createElement('div');
+  f.className = 'float ' + (add ? 'plus' : 'minus');
+  f.textContent = add ? '+1' : '−1';
+  card.appendChild(f);
+  setTimeout(()=>f.remove(), 650);
+
+  if(navigator.vibrate) navigator.vibrate(add ? 15 : [25,40,25]);
+}
+
+function correctCount(e, id){
+  e.stopPropagation();
+  // そのメニューの最新の1件を取り消す
+  for(let i=sales.length-1; i>=0; i--){
+    const s = sales[i];
+    if(s.date===session.date && s.staff===session.staff && s.menuId===id){
+      const removed = sales.splice(i,1)[0];
+      if(!saveSales()){ sales.splice(i,0,removed); return; }
+      refreshCounts();
+      const card = e.target.closest('.menu-card');
+      if(card) playEffect(card, 'minus');
+      return;
+    }
+  }
+}
+
+/* ---------- 集計画面 ---------- */
+
+function openSummary(from){
+  summaryFrom = from;
+  document.getElementById('sumDate').value = (from==='count' ? session.date : dateEl.value) || todayStr();
+  setCounting(false);
+  document.getElementById('startScreen').classList.add('hidden');
+  document.getElementById('countScreen').classList.add('hidden');
+  document.getElementById('summaryScreen').classList.remove('hidden');
+  renderSummary();
+  window.scrollTo(0,0);
+}
+
+function closeSummary(){
+  document.getElementById('summaryScreen').classList.add('hidden');
+  if(summaryFrom==='count'){
+    setCounting(true);
+    document.getElementById('countScreen').classList.remove('hidden');
+    renderMenus();
+  }else{
+    document.getElementById('startScreen').classList.remove('hidden');
+  }
+}
+
+function dayLabel(d){
+  const dt = new Date(d + 'T00:00:00');
+  return `${d.replace(/-/g,'/')}（${'日月火水木金土'[dt.getDay()]}）`;
+}
+
+function totalOf(list){
+  return {qty: list.length, amount: list.reduce((a,s)=>a+Number(s.price),0)};
+}
+
+// メニュー別の集計。同じ名前・同じ単価は1行にまとめる（複数端末のデータを取り込んでも1行になる）
+function menuRowsOf(list){
+  const map = new Map();
+  list.forEach(s=>{
+    const k = s.name + '|' + s.price;
+    const r = map.get(k) || {name:s.name, price:Number(s.price), qty:0};
+    r.qty++;
+    map.set(k, r);
+  });
+  return [...map.values()].sort((a,b)=>b.qty*b.price - a.qty*a.price);
+}
+
+function staffRowsOf(list){
+  const map = new Map();
+  list.forEach(s=>{
+    const r = map.get(s.staff) || {staff:s.staff, qty:0, amount:0};
+    r.qty++;
+    r.amount += Number(s.price);
+    map.set(s.staff, r);
+  });
+  return [...map.values()].sort((a,b)=>b.amount-a.amount);
+}
+
+function renderSummary(){
+  const date = document.getElementById('sumDate').value;
+  const list = sales.filter(s=>s.date===date);
+  const total = totalOf(list);
+  const places = [...new Set(list.map(s=>s.place).filter(Boolean))];
+  document.getElementById('sumPlace').textContent = places.length ? '出店場所・イベント：' + places.join('、') : '';
+
+  document.getElementById('sumHero').innerHTML = `
+    <div><div class="lbl">売上</div><div class="val">${yen(total.amount)}</div></div>
+    <div><div class="lbl">販売数</div><div class="val">${total.qty}個</div></div>
+  `;
+
+  const menuRows = menuRowsOf(list);
+  document.getElementById('sumMenu').innerHTML = menuRows.length ? `
+    <table class="tbl">
+      <thead><tr><th>メニュー</th><th>個数</th><th>金額</th></tr></thead>
+      <tbody>
+        ${menuRows.map(r=>`
+          <tr>
+            <td>${escapeHtml(r.name)}<div class="small">${yen(r.price)}</div></td>
+            <td>${r.qty}</td>
+            <td>${yen(r.qty*r.price)}</td>
+          </tr>`).join('')}
+      </tbody>
+      <tfoot><tr><td>合計</td><td>${total.qty}</td><td>${yen(total.amount)}</td></tr></tfoot>
+    </table>` : '<div class="empty">この日の販売記録はありません</div>';
+
+  const staffRows = staffRowsOf(list);
+  document.getElementById('sumStaff').innerHTML = staffRows.length ? `
+    <table class="tbl">
+      <thead><tr><th>スタッフ</th><th>個数</th><th>金額</th></tr></thead>
+      <tbody>
+        ${staffRows.map(r=>`
+          <tr><td>${escapeHtml(r.staff)}</td><td>${r.qty}</td><td>${yen(r.amount)}</td></tr>`).join('')}
+      </tbody>
+    </table>` : '<div class="empty">この日の販売記録はありません</div>';
+
+  // 日別一覧
+  const dayMap = new Map();
+  sales.forEach(s=>{
+    const r = dayMap.get(s.date) || {date:s.date, qty:0, amount:0, places:new Set()};
+    r.qty++;
+    r.amount += Number(s.price);
+    if(s.place) r.places.add(s.place);
+    dayMap.set(s.date, r);
+  });
+  const dayRows = [...dayMap.values()].sort((a,b)=> a.date < b.date ? 1 : -1);
+  const all = totalOf(sales);
+  document.getElementById('sumDays').innerHTML = dayRows.length ? `
+    ${dayRows.map(r=>`
+      <button class="day-row ${r.date===date?'selected':''}" onclick="pickDay('${r.date}')">
+        <span>${dayLabel(r.date)}${r.places.size ? `<div class="small">${escapeHtml([...r.places].join('、'))}</div>` : ''}</span>
+        <span>${r.qty}個</span>
+        <span class="amt">${yen(r.amount)}</span>
+      </button>`).join('')}
+    <div class="day-row" style="margin-bottom:0;background:#f5f8fe">
+      <span><b>全期間の合計</b></span>
+      <span>${all.qty}個</span>
+      <span class="amt">${yen(all.amount)}</span>
+    </div>` : '<div class="empty">まだ販売記録がありません</div>';
+}
+
+/* ---------- 共有 ---------- */
+
+function toast(msg){
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 2800);
+}
+
+async function copyText(text){
+  try{ await navigator.clipboard.writeText(text); }
+  catch(e){
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+  }
+}
+
+function buildSummaryText(date){
+  const list = sales.filter(s=>s.date===date);
+  const t = totalOf(list);
+  const places = [...new Set(list.map(s=>s.place).filter(Boolean))];
+  const lines = [`【CAFE BLUE BRIDGE キッチンカー売上】${dayLabel(date)}`];
+  if(places.length) lines.push(`出店場所・イベント：${places.join('、')}`);
+  lines.push(`売上 ${yen(t.amount)}／${t.qty}個`, '');
+  menuRowsOf(list).forEach(r=>lines.push(`${r.name} ${yen(r.price)} ×${r.qty} = ${yen(r.qty*r.price)}`));
+  const st = staffRowsOf(list);
+  if(st.length > 1){
+    lines.push('', 'スタッフ別');
+    st.forEach(r=>lines.push(`${r.staff} ${r.qty}個 ${yen(r.amount)}`));
+  }
+  return lines.join('\n');
+}
+
+// 選んだ日の集計を、共有シート（LINE等）に渡す。使えない環境ではコピーする
+async function shareSummaryText(){
+  const date = document.getElementById('sumDate').value;
+  if(!sales.some(s=>s.date===date)){ toast('この日の販売記録がありません'); return; }
+  const text = buildSummaryText(date);
+  if(navigator.share){
+    try{ await navigator.share({text}); return; }
+    catch(e){ if(e && e.name === 'AbortError') return; }
+  }
+  await copyText(text);
+  toast('集計をコピーしました。LINEなどに貼り付けてください');
+}
+
+// 販売記録をファイルに書き出す（別の端末で「取り込む」と合算される）
+async function exportSales(){
+  if(!sales.length){ toast('書き出す販売記録がありません'); return; }
+  const data = {app:'kitchencar-counter', version:1, exportedAt:new Date().toISOString(), sales};
+  const name = `kitchencar-sales-${todayStr()}.json`;
+  const file = new File([JSON.stringify(data)], name, {type:'application/json'});
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file], title:name}); return; }
+    catch(e){ if(e && e.name === 'AbortError') return; }
+  }
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+  toast('ファイルを保存しました');
+}
+
+// 他の端末から書き出したファイルを取り込む。IDが同じ記録は重複として無視する
+function importSales(e){
+  const file = e.target.files[0];
+  e.target.value = '';
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onerror = ()=>alert('ファイルを読み込めませんでした');
+  reader.onload = ()=>{
+    let data;
+    try{ data = JSON.parse(reader.result); }catch(err){ data = null; }
+    if(!data || data.app !== 'kitchencar-counter' || !Array.isArray(data.sales)){
+      alert('このファイルは取り込めません。このアプリで書き出したファイルを選んでください。');
+      return;
+    }
+    const valid = r => r && typeof r.id === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.date)
+      && typeof r.staff === 'string' && typeof r.menuId === 'string' && typeof r.name === 'string'
+      && Number.isFinite(Number(r.price));
+    const before = sales.slice();
+    const have = new Set(sales.map(r=>r.id));
+    let added = 0, dup = 0, bad = 0;
+    data.sales.forEach(r=>{
+      if(!valid(r)){ bad++; return; }
+      if(have.has(r.id)){ dup++; return; }
+      have.add(r.id);
+      sales.push({id:r.id, ts:Number(r.ts)||0, date:r.date, staff:r.staff, menuId:r.menuId, name:r.name, price:Number(r.price),
+        place: typeof r.place === 'string' ? r.place.slice(0,40) : ''});
+      added++;
+    });
+    if(added){
+      sales.sort((x,y)=>(x.ts||0)-(y.ts||0));
+      if(!saveSales()){ sales = before; return; }
+    }
+    renderSummary();
+    refreshPlaceList();
+    toast(`${added}件を取り込みました（重複${dup}件` + (bad ? `、読み取れない${bad}件` : '') + 'はスキップ）');
+  };
+  reader.readAsText(file);
+}
+
+function pickDay(d){
+  document.getElementById('sumDate').value = d;
+  renderSummary();
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+/* ---------- メニュー編集 ---------- */
+
+function openMenuManager(){
+  renderManageList();
+  document.getElementById('menuModal').classList.remove('hidden');
+}
+
+function closeMenuManager(){
+  document.getElementById('menuModal').classList.add('hidden');
+  document.getElementById('newName').value='';
+  document.getElementById('newPrice').value='';
+  // カウント画面から開いた場合は、変更を画面に反映する
+  if(!document.getElementById('countScreen').classList.contains('hidden')) renderMenus();
+}
+
+function renderManageList(){
+  const list = document.getElementById('manageList');
+  list.innerHTML = '';
+  const last = state.menus.length - 1;
+
+  state.menus.forEach((menu, i)=>{
+    const item = document.createElement('div');
+    item.className = 'manage-item';
+
+    const thumb = menu.photo
+      ? `<img class="thumb" src="${menu.photo}" alt="">`
+      : `<div class="no-thumb">写真を追加</div>`;
+
+    item.innerHTML = `
+      <div class="thumb-cell">
+        <button class="thumb-btn" onclick="pickPhoto('${menu.id}')" aria-label="写真を変更">${thumb}</button>
+        ${menu.photo ? `<button class="linkbtn" onclick="removePhoto('${menu.id}')">写真を消す</button>` : ''}
+      </div>
+      <div class="fields">
+        <input type="text" value="${escapeHtml(menu.name)}" placeholder="メニュー名" onchange="updateMenu('${menu.id}','name',this)">
+        <div class="pricebox"><span>¥</span><input type="number" inputmode="numeric" min="0" value="${menu.price}" onchange="updateMenu('${menu.id}','price',this)"></div>
+      </div>
+      <div class="actions">
+        <button class="secondary mini" onclick="moveMenu('${menu.id}',-1)" ${i===0?'disabled':''} aria-label="上へ">↑</button>
+        <button class="secondary mini" onclick="moveMenu('${menu.id}',1)" ${i===last?'disabled':''} aria-label="下へ">↓</button>
+        <button class="secondary mini delete" onclick="deleteMenu('${menu.id}')">削除</button>
+      </div>
+    `;
+    list.appendChild(item);
+  });
+}
+
+// 名前・価格を入力欄で直接書き換えたら、その場で保存
+function updateMenu(id, field, el){
+  const menu = state.menus.find(m=>m.id===id);
+  if(!menu) return;
+
+  if(field === 'name'){
+    const v = el.value.trim();
+    if(!v){ alert('メニュー名を入力してください'); el.value = menu.name; return; }
+    menu.name = v;
+    el.value = v;
+  }else{
+    const v = Number(el.value);
+    if(el.value === '' || !Number.isFinite(v) || v < 0){
+      alert('価格は0以上の数字で入力してください');
+      el.value = menu.price;
+      return;
+    }
+    menu.price = Math.round(v);
+    el.value = menu.price;
+  }
+  save();
+  el.classList.add('saved');
+  setTimeout(()=>el.classList.remove('saved'), 900);
+}
+
+function moveMenu(id, dir){
+  const i = state.menus.findIndex(m=>m.id===id);
+  const j = i + dir;
+  if(i < 0 || j < 0 || j >= state.menus.length) return;
+  [state.menus[i], state.menus[j]] = [state.menus[j], state.menus[i]];
+  save();
+  renderManageList();
+}
+
+function addMenu(){
+  const name = document.getElementById('newName').value.trim();
+  const priceStr = document.getElementById('newPrice').value;
+  const price = Number(priceStr);
+  if(!name){ alert('メニュー名を入力してください'); return; }
+  if(priceStr === '' || !Number.isFinite(price) || price < 0){ alert('価格を入力してください'); return; }
+
+  state.menus.push({id:crypto.randomUUID(), name, price:Math.round(price), photo:''});
+  save();
+  document.getElementById('newName').value = '';
+  document.getElementById('newPrice').value = '';
+  renderManageList();
+  const list = document.getElementById('manageList');
+  if(list.lastElementChild) list.lastElementChild.scrollIntoView({block:'nearest'});
+  document.getElementById('newName').focus();
+}
+
+function deleteMenu(id){
+  const menu = state.menus.find(m=>m.id===id);
+  if(!menu) return;
+  // 過去の販売記録は名前・単価つきで残るので、集計には影響しません
+  if(!confirm(`「${menu.name}」を削除しますか？\n（過去の販売記録は集計に残ります）`)) return;
+  state.menus = state.menus.filter(m=>m.id!==id);
+  save();
+  renderManageList();
+}
+
+/* ---------- 写真 ---------- */
+
+function pickPhoto(id){
+  photoTargetId = id;
+  const picker = document.getElementById('photoPicker');
+  picker.value = '';
+  picker.click();
+}
+
+document.getElementById('photoPicker').addEventListener('change', async e=>{
+  const file = e.target.files[0];
+  const menu = state.menus.find(m=>m.id===photoTargetId);
+  if(!file || !menu) return;
+  try{
+    menu.photo = await compressImage(file);
+    save();
+    renderManageList();
+  }catch(err){
+    alert('写真を読み込めませんでした');
+  }
+});
+
+function removePhoto(id){
+  const menu = state.menus.find(m=>m.id===id);
+  if(!menu) return;
+  menu.photo = '';
+  save();
+  renderManageList();
+}
+
+// スマホの写真をそのまま保存すると容量を使い切るので、縮小・圧縮して保存する
+function compressImage(file, max=640){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = ()=>{
+        const scale = Math.min(1, max / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(c.toDataURL('image/jpeg', 0.8));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+}
+
+// スタッフ名は開始前は空欄にする
+document.getElementById('staffName').value = '';
+refreshPlaceList();
+
+// 価格欄で Enter を押したらメニュー追加
+document.getElementById('newPrice').addEventListener('keydown', e=>{
+  if(e.key === 'Enter') addMenu();
+});
+
+// オフライン対応（電波がなくても起動できるようにする）
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); });
+}
+</script>
+</body>
+</html>
